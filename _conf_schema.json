@@ -1,0 +1,56 @@
+{
+  "client_id": {
+    "type": "string",
+    "description": "123盘开放平台的 clientID，用于刷新 access_token。",
+    "hint": "在 123 盘开放平台后台获取",
+    "default": ""
+  },
+  "client_secret": {
+    "type": "string",
+    "description": "123盘开放平台的 clientSecret。",
+    "hint": "在 123 盘开放平台后台获取",
+    "default": ""
+  },
+  "private_key": {
+    "type": "string",
+    "description": "生成鉴权直链所需的 private_key。",
+    "hint": "仅在使用鉴权直链时必填",
+    "default": ""
+  },
+  "access_token": {
+    "type": "string",
+    "description": "可选。当前 access_token，本地缓存或手动填写均可。",
+    "hint": "通常可通过 /123pan token 自动刷新",
+    "default": ""
+  },
+  "expired_at": {
+    "type": "string",
+    "description": "可选。access_token 的过期时间记录。",
+    "hint": "格式示例：2026-03-20 12:00:00",
+    "default": ""
+  },
+  "uid": {
+    "type": "int",
+    "description": "可选。123盘用户 UID，本地缓存字段。",
+    "hint": "无需手动填写也可运行",
+    "default": 0
+  },
+  "request_timeout": {
+    "type": "int",
+    "description": "请求 123盘 OpenAPI 的默认超时时间，单位秒。",
+    "hint": "建议保留默认值 30",
+    "default": 30
+  },
+  "direct_link_sign_expire_seconds": {
+    "type": "int",
+    "description": "鉴权直链签名有效期，单位秒。",
+    "hint": "默认 86400 秒，即 1 天",
+    "default": 86400
+  },
+  "prefer_v2_list": {
+    "type": "bool",
+    "description": "是否优先使用 v2 文件列表接口。",
+    "hint": "当前插件同时提供 list 和 listv1 指令",
+    "default": true
+  }
+}
