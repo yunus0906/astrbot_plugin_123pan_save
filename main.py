@@ -656,10 +656,7 @@ class Pan123Plugin(Star):
             args = shlex.split(text, posix=False)
         except ValueError:
             args = text.split()
-        normalized = [item.strip().strip('"').strip("'") for item in args if item.strip()]
-        if normalized and normalized[0].lstrip("/").lower() == "123pan":
-            normalized = normalized[1:]
-        return normalized
+        return [item.strip().strip('"').strip("'") for item in args if item.strip()]
 
     def _client(self) -> Pan123OpenAPI:
         return Pan123OpenAPI(self)
@@ -726,16 +723,10 @@ class Pan123Plugin(Star):
             raise Pan123Error(f"本地文件不存在：{candidate}")
         return str(candidate)
 
-    @filter.command("123pan")
-    async def pan123(self, event: AstrMessageEvent):
-        """123 盘 OpenAPI 指令入口。发送 /123pan help 查看完整指令说明。"""
-        args = self._parse_args(event.message_str)
-        if not args:
-            yield event.plain_result(self._help_text())
-            return
-
-        action = args[0].lower()
+    async def _handle_pan123_action(self, event: AstrMessageEvent, action: str, *action_args: str):
         client = self._client()
+        args = [action, *action_args]
+        action = action.lower()
 
         try:
             if action == "help":
@@ -759,8 +750,6 @@ class Pan123Plugin(Star):
                     "用户信息\n"
                     f"uid: {data.get('uid')}\n"
                     f"昵称: {data.get('nickname', '')}\n"
-                    # f"邮箱: {data.get('mail', '')}\n"
-                    # f"手机号: {data.get('passport', '')}\n"
                     f"已用空间: {used} GB\n"
                     f"永久空间: {permanent} TB\n"
                     f"临时空间: {data.get('spaceTemp', 0)}\n"
@@ -949,3 +938,180 @@ class Pan123Plugin(Star):
         except Exception as exc:
             logger.exception("123 盘插件执行异常", exc_info=exc)
             yield event.plain_result(f"123盘操作异常：{exc}")
+
+    @filter.command_group("123pan")
+    def pan123(self):
+        """123 盘 OpenAPI 指令组。发送 /123pan help 查看完整指令说明。"""
+        pass
+
+    @pan123.command("help")
+    async def pan123_help(self, event: AstrMessageEvent):
+        """查看帮助"""
+        async for result in self._handle_pan123_action(event, "help"):
+            yield result
+
+    @pan123.command("token")
+    async def pan123_token(self, event: AstrMessageEvent):
+        """刷新 access_token"""
+        async for result in self._handle_pan123_action(event, "token"):
+            yield result
+
+    @pan123.command("user")
+    async def pan123_user(self, event: AstrMessageEvent):
+        """获取用户信息"""
+        async for result in self._handle_pan123_action(event, "user"):
+            yield result
+
+    @pan123.command("mkdir")
+    async def pan123_mkdir(self, event: AstrMessageEvent, name: str, parent_id: int = 0):
+        """mkdir <目录名> [父目录ID] - 创建目录"""
+        async for result in self._handle_pan123_action(event, "mkdir", name, str(parent_id)):
+            yield result
+
+    @pan123.command("upload")
+    async def pan123_upload(self, event: AstrMessageEvent, local_file: str, parent_id: int = 0):
+        """upload <本地文件路径> [父目录ID] - 上传文件"""
+        async for result in self._handle_pan123_action(event, "upload", local_file, str(parent_id)):
+            yield result
+
+    @pan123.command("list")
+    async def pan123_list(
+        self,
+        event: AstrMessageEvent,
+        parent_id: int = 0,
+        search_data: str = "",
+        last_file_id: int = 0,
+        limit: int = 100,
+    ):
+        """list [父目录ID] [关键字] [lastFileId] [limit] - 获取文件列表(v2)"""
+        async for result in self._handle_pan123_action(
+            event,
+            "list",
+            str(parent_id),
+            search_data,
+            str(last_file_id),
+            str(limit),
+        ):
+            yield result
+
+    @pan123.command("listv1")
+    async def pan123_listv1(
+        self,
+        event: AstrMessageEvent,
+        parent_id: int = 0,
+        page: int = 1,
+        limit: int = 100,
+        search_data: str = "",
+        trashed: bool = False,
+    ):
+        """listv1 [父目录ID] [页码] [limit] [关键字] [trashed] - 获取文件列表(v1)"""
+        async for result in self._handle_pan123_action(
+            event,
+            "listv1",
+            str(parent_id),
+            str(page),
+            str(limit),
+            search_data,
+            str(trashed),
+        ):
+            yield result
+
+    @pan123.command("detail")
+    async def pan123_detail(self, event: AstrMessageEvent, file_id: int):
+        """detail <fileID> - 获取文件详情"""
+        async for result in self._handle_pan123_action(event, "detail", str(file_id)):
+            yield result
+
+    @pan123.command("move")
+    async def pan123_move(self, event: AstrMessageEvent, file_ids: str, target_parent_id: int):
+        """move <fileIDs逗号分隔> <目标目录ID> - 移动文件"""
+        async for result in self._handle_pan123_action(event, "move", file_ids, str(target_parent_id)):
+            yield result
+
+    @pan123.command("trash")
+    async def pan123_trash(self, event: AstrMessageEvent, file_ids: str):
+        """trash <fileIDs逗号分隔> - 删除到回收站"""
+        async for result in self._handle_pan123_action(event, "trash", file_ids):
+            yield result
+
+    @pan123.command("recover")
+    async def pan123_recover(self, event: AstrMessageEvent, file_ids: str):
+        """recover <fileIDs逗号分隔> - 从回收站恢复"""
+        async for result in self._handle_pan123_action(event, "recover", file_ids):
+            yield result
+
+    @pan123.command("delete")
+    async def pan123_delete(self, event: AstrMessageEvent, file_ids: str):
+        """delete <fileIDs逗号分隔> - 彻底删除"""
+        async for result in self._handle_pan123_action(event, "delete", file_ids):
+            yield result
+
+    @pan123.command("rename")
+    async def pan123_rename(self, event: AstrMessageEvent, *rename_items: str):
+        """rename <fileID:新名称> [更多项...] - 批量重命名"""
+        async for result in self._handle_pan123_action(event, "rename", *rename_items):
+            yield result
+
+    @pan123.command("share")
+    async def pan123_share(
+        self,
+        event: AstrMessageEvent,
+        file_ids: str,
+        share_name: str,
+        share_expire: int,
+        share_pwd: str = "",
+    ):
+        """share <fileIDs逗号分隔> <分享名称> <1|7|30|0> [提取码] - 创建分享"""
+        action_args = [file_ids, share_name, str(share_expire)]
+        if share_pwd:
+            action_args.append(share_pwd)
+        async for result in self._handle_pan123_action(event, "share", *action_args):
+            yield result
+
+    @pan123.command("offline")
+    async def pan123_offline(self, event: AstrMessageEvent, url: str, file_name: str, parent_id: int = 0):
+        """offline <URL> <保存文件名> [父目录ID] - 创建离线下载"""
+        async for result in self._handle_pan123_action(event, "offline", url, file_name, str(parent_id)):
+            yield result
+
+    @pan123.command("direct-enable")
+    async def pan123_direct_enable(self, event: AstrMessageEvent):
+        """direct-enable - 启用直链空间"""
+        async for result in self._handle_pan123_action(event, "direct-enable"):
+            yield result
+
+    @pan123.command("direct-disable")
+    async def pan123_direct_disable(self, event: AstrMessageEvent):
+        """direct-disable - 禁用直链空间"""
+        async for result in self._handle_pan123_action(event, "direct-disable"):
+            yield result
+
+    @pan123.command("direct-url")
+    async def pan123_direct_url(self, event: AstrMessageEvent, file_id: int):
+        """direct-url <fileID> - 获取直链"""
+        async for result in self._handle_pan123_action(event, "direct-url", str(file_id)):
+            yield result
+
+    @pan123.command("direct-auth")
+    async def pan123_direct_auth(self, event: AstrMessageEvent, file_id: int):
+        """direct-auth <fileID> - 获取鉴权直链"""
+        async for result in self._handle_pan123_action(event, "direct-auth", str(file_id)):
+            yield result
+
+    @pan123.command("transcode-status")
+    async def pan123_transcode_status(self, event: AstrMessageEvent, file_id: int):
+        """transcode-status <fileID> - 查询转码进度"""
+        async for result in self._handle_pan123_action(event, "transcode-status", str(file_id)):
+            yield result
+
+    @pan123.command("transcode-start")
+    async def pan123_transcode_start(self, event: AstrMessageEvent, file_id: int):
+        """transcode-start <fileID> - 发起直链转码"""
+        async for result in self._handle_pan123_action(event, "transcode-start", str(file_id)):
+            yield result
+
+    @pan123.command("m3u8")
+    async def pan123_m3u8(self, event: AstrMessageEvent, file_id: int):
+        """m3u8 <fileID> - 获取转码 m3u8 链接"""
+        async for result in self._handle_pan123_action(event, "m3u8", str(file_id)):
+            yield result

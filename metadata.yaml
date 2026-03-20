@@ -2,5 +2,5 @@ name: astrbot_plugin_123pan_save
 display_name: 123盘 OpenAPI
 desc: 基于 123 盘官方 OpenAPI 的 AstrBot 插件，支持上传、列表、分享、离线下载、直链和转码等功能。
 version: v1.0.0
-author: cycle
-repo: https://github.com/cycle/astrbot_plugin_123pan_save
+author: yunus
+repo: https://github.com/yunus0906/astrbot_plugin_123pan_save
