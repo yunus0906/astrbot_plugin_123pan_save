@@ -1,3 +1,10 @@
+"""
+123pan-upload-python-example
+- 123云盘上传实例，通过简单的API封装，实现123网盘文件查询，创建文件/文件夹，文件下载本地上传等，对接OPENAI
+- https://gitee.com/lyd-code/123pan-upload-python-example
+- 官方文档：https://123yunpan.yuque.com/org-wiki-123yunpan-muaork/cr6ced
+"""
+
 import os
 import time
 import json

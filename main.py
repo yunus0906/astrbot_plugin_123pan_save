@@ -9,7 +9,9 @@ import random
 import shlex
 import time
 from dataclasses import dataclass
+import tempfile
 from pathlib import Path
+from uuid import uuid4
 from typing import Any
 from urllib.parse import unquote, urlencode, urlparse
 
@@ -664,6 +666,51 @@ class Pan123Plugin(Star):
     async def _run_blocking(self, func, *args, **kwargs):
         return await asyncio.to_thread(func, *args, **kwargs)
 
+    @staticmethod
+    def _extract_reply_mp4_url(message_components: Any) -> tuple[str | None, str | None]:
+        if not isinstance(message_components, list):
+            return None, None
+
+        for component in message_components:
+            if getattr(component, "type", None) != "Reply":
+                continue
+            reply_chain = getattr(component, "chain", None)
+            if not isinstance(reply_chain, list):
+                continue
+            for reply_item in reply_chain:
+                if getattr(reply_item, "type", None) != "File":
+                    continue
+                file_name = str(getattr(reply_item, "name", "") or "").strip()
+                file_url = str(getattr(reply_item, "url", "") or "").strip()
+                if not file_url:
+                    continue
+                if file_name.lower().endswith(".mp4"):
+                    return file_url, file_name
+        return None, None
+
+    @staticmethod
+    def _download_reply_file(file_url: str, file_name: str) -> str:
+        temp_dir = Path(tempfile.gettempdir()) / "astrbot_plugin_123pan_save"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = Path(file_name).name or f"reply_video_{uuid4().hex}.mp4"
+        target_path = temp_dir / safe_name
+        if target_path.exists():
+            target_path = temp_dir / f"{target_path.stem}_{uuid4().hex[:8]}{target_path.suffix or '.mp4'}"
+
+        try:
+            with requests.get(file_url, stream=True, timeout=60) as response:
+                response.raise_for_status()
+                with open(target_path, "wb") as file_obj:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            file_obj.write(chunk)
+        except requests.RequestException as exc:
+            raise Pan123Error(f"下载引用视频失败：{exc}") from exc
+        except OSError as exc:
+            raise Pan123Error(f"保存临时视频失败：{exc}") from exc
+
+        return str(target_path)
+
     def _help_text(self) -> str:
         return "\n".join(
             [
@@ -673,6 +720,7 @@ class Pan123Plugin(Star):
                 "/123pan user - 获取用户信息",
                 "/123pan mkdir <目录名> [父目录ID] - 创建目录",
                 "/123pan upload <本地文件路径> [父目录ID] - 上传文件",
+                "/123pan upload2 [父目录ID] - 选中要上传的文件引用，使用指令上传文件",
                 "/123pan list [父目录ID] [关键字] [lastFileId] [limit] - 获取文件列表(v2)",
                 "/123pan listv1 [父目录ID] [页码] [limit] [关键字] [trashed] - 获取文件列表(v1)",
                 "/123pan detail <fileID> - 获取文件详情",
@@ -1115,3 +1163,45 @@ class Pan123Plugin(Star):
         """m3u8 <fileID> - 获取转码 m3u8 链接"""
         async for result in self._handle_pan123_action(event, "m3u8", str(file_id)):
             yield result
+
+    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
+    async def on_group_message(self, event: AstrMessageEvent):
+        message_str = (event.message_str or "").strip()
+        if not message_str.startswith("123pan upload2"):
+            return
+
+        message_components = getattr(event.message_obj, "message", None)
+        file_url, file_name = self._extract_reply_mp4_url(message_components)
+        if not file_url or not file_name:
+            yield event.plain_result("upload2 失败：未检测到引用消息中的 MP4 文件")
+            return
+
+        parent_id_text = message_str[len("123pan upload2"):].strip().strip("。")
+        parent_id = 0 if not parent_id_text else self._to_int(parent_id_text, -1)
+        if parent_id < 0:
+            yield event.plain_result("upload2 失败：父目录ID必须为数字")
+            return
+
+        temp_file_path = ""
+        try:
+            temp_file_path = await self._run_blocking(self._download_reply_file, file_url, file_name)
+            data = await self._run_blocking(self._client().create_file, temp_file_path, parent_id)
+            yield event.plain_result(
+                "upload2 上传成功\n"
+                f"父目录ID: {parent_id}\n"
+                f"fileID: {data.get('fileID')}\n"
+                f"文件名: {file_name}\n"
+                f"秒传: {self._to_bool_text(bool(data.get('reuse')))}\n"
+                f"异步完成: {self._to_bool_text(bool(data.get('async')))}"
+            )
+        except Pan123Error as exc:
+            yield event.plain_result(f"upload2 失败：{exc}")
+        except Exception as exc:
+            logger.exception("upload2 处理异常", exc_info=exc)
+            yield event.plain_result(f"upload2 异常：{exc}")
+        finally:
+            if temp_file_path:
+                try:
+                    Path(temp_file_path).unlink(missing_ok=True)
+                except OSError:
+                    logger.warning(f"清理临时文件失败：{temp_file_path}")
